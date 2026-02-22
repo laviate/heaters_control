@@ -11,6 +11,8 @@
 
 #include "main.h" // Includes your GPIO definitions and HAL
 
+extern signed short current_temp;
+
 // Default I2C Address (A0=0) - Shifted for HAL (0x60 << 1) or (0x67 << 1)
 // Check your schematic for A0 pin status.
 #define MCP96L01_I2C_ADDR          (0x60 << 1)
@@ -73,6 +75,8 @@ typedef struct {
 } MCP96L01_HandleTypeDef;
 
 // --- Function Prototypes ---
+void Handle_OC_SC_Error();
+void Process_Heater_PI(void);
 HAL_StatusTypeDef MCP96L01_Init(MCP96L01_HandleTypeDef *dev, I2C_HandleTypeDef *hi2c, uint8_t addr, MCP96_TCType_t type);
 HAL_StatusTypeDef MCP96L01_SetThermocoupleType(MCP96L01_HandleTypeDef *dev, MCP96_TCType_t type);
 float MCP96L01_ReadHotJunction(MCP96L01_HandleTypeDef *dev);

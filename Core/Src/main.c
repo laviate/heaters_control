@@ -1,20 +1,4 @@
 /* USER CODE BEGIN Header */
-/**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -46,6 +30,9 @@ I2C_HandleTypeDef hi2c1;
 MCP96L01_HandleTypeDef thermocouple;
 volatile uint8_t oc_detected = 0; //Disable PWM when OC or SC is detected
 volatile uint8_t sc_detected = 0;
+signed short target_temp = 308; //Default value before reading from Flash
+uint32_t last_temp_read = 0;
+signed short current_temp = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -93,19 +80,23 @@ int main(void)
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
 
-  // FOR YOUR 16x1 DISPLAY:
-  LCD_Init(LCD_TYPE_16x1_SPLIT);
+  LCD_Init();
 
   // Printing Cyrillic "Привет" (Hi)
   // The library detects the UTF-8 bytes and maps them to the LCD
-  LCD_Print("Привет");
+  //  LCD_Print("Привет");
 
-  // Move to visually the "right half" of the 16x1 display
-  LCD_SetCursor(0, 8);
-  LCD_Print("123");
+  /* Read from flash what the set temperatures is */
+
+  LCD_Print("Зад. Темп: ");
+  LCD_PrintInt(target_temp);
+  LCD_PrintLine(0, "C");
+  LCD_SetCursor(1, 0);
+  LCD_Print("Изм. Темп: ");
+
 
   if (MCP96L01_Init(&thermocouple, &hi2c1, MCP96L01_I2C_ADDR, TC_TYPE_K) != HAL_OK) {
-        // Initialization Error Handling
+//         Initialization Error Handling
     }
 
   // Alert at ALERT1 pin if temperature is above 450C
@@ -117,27 +108,17 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  // A. Read Temperature
-	  float currentTemp = MCP96L01_ReadHotJunction(&thermocouple);
+	  // 1. Handle UI & Button States instantly
+//	  Process_UI();
 
-	  // B. Check Status (Short/Open Circuit)
-	  // MCP96L01 Status Register: Bit 6 is Input Range (Open Circuit usually)
-	  uint8_t status = MCP96L01_GetStatus(&thermocouple);
-
-	  if (HAL_GPIO_ReadPin(MDI_OCALERT_GPIO_Port, MDI_OCALERT_Pin) == GPIO_PIN_SET) {			// OPEN CIRCUIT DETECTED!
-			// You can also read your GPIO pin here:
-			// if (HAL_GPIO_ReadPin(MDI_OCALERT_GPIO_Port, MDI_OCALERT_Pin) == GPIO_PIN_SET) ...
-		#warning "TODO: Implement specific safety shutdown logic for Open Circuit here!"
-	  }
-	  // --- Check Short Circuit Pin (SCALERT) ---
-	  if (HAL_GPIO_ReadPin(SCALERT_GPIO_Port, SCALERT_Pin) == GPIO_PIN_SET) {
-
-		  #warning "TODO: Implement specific safety shutdown logic for Short Circuit here!"
-		  // Example: Turn off heater
-		  // HAL_GPIO_WritePin(TEMP_CONTROL_GPIO_Port, TEMP_CONTROL_Pin, GPIO_PIN_RESET);
+	  // 2. Read temperature at a sensible rate (e.g., 4 times a second)
+	  if (HAL_GetTick() - last_temp_read >= 250) {
+		  current_temp = MCP96L01_ReadHotJunction(&thermocouple);
+		  last_temp_read = HAL_GetTick();
 	  }
 
-		HAL_Delay(500);
+	  // 3. Update the Heater logic instantly
+//	  Process_Heater_PI();
 
     /* USER CODE END WHILE */
 
@@ -326,15 +307,14 @@ static void MX_GPIO_Init(void)
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     // Check if the interrupt came from OC or SC pins
-    if (GPIO_Pin == MDI_OCALERT_Pin || GPIO_Pin == SCALERT_Pin) {
-
+    if (GPIO_Pin == MDI_OCALERT_Pin) {
         // 1. SAFETY FIRST: Hard cut power to heater immediately
-        HAL_GPIO_WritePin(TEMP_CONTROL_GPIO_Port, TEMP_CONTROL_Pin, GPIO_RESET);
-
-        // 2. Set global fault flag
-        system_fault = 1;
-
-        // TODO: Maybe turn on a Red LED here?
+        HAL_GPIO_WritePin(TEMP_CONTROL_GPIO_Port, TEMP_CONTROL_Pin, GPIO_PIN_RESET);
+        oc_detected = 1;
+    }
+    else if (GPIO_Pin == SCALERT_Pin) {
+    	HAL_GPIO_WritePin(TEMP_CONTROL_GPIO_Port, TEMP_CONTROL_Pin, GPIO_PIN_RESET);
+    	sc_detected = 1;
     }
 }
 /* USER CODE END 4 */

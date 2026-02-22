@@ -1,0 +1,10 @@
+../Core/Src/mcp96l01.c:24:6:Process_Heater_PI	12
+../Core/Src/mcp96l01.c:80:6:Handle_OC_SC_Error	3
+../Core/Src/mcp96l01.c:98:26:WriteReg	1
+../Core/Src/mcp96l01.c:103:26:ReadRegs	1
+../Core/Src/mcp96l01.c:110:19:MCP96L01_Init	4
+../Core/Src/mcp96l01.c:140:19:MCP96L01_SetThermocoupleType	2
+../Core/Src/mcp96l01.c:157:7:MCP96L01_ReadHotJunction	2
+../Core/Src/mcp96l01.c:175:7:MCP96L01_ReadColdJunction	2
+../Core/Src/mcp96l01.c:186:9:MCP96L01_GetStatus	1
+../Core/Src/mcp96l01.c:198:19:MCP96L01_ConfigureAlertLimit	9

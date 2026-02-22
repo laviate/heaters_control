@@ -7,6 +7,93 @@
 
 #include "mcp96l01.h"
 
+#define PWM_WINDOW_MS 1000 // 1 Hz base frequency (1000ms window)
+#define PROP_BAND     10.0f // Proportional band (start dimming 10C before target)
+
+// --- PI Tuning Parameters ---
+#define KP 100.0f        // Proportional gain (100ms ON-time per 1°C error)
+#define KI 2.0f          // Integral gain (adds 2ms ON-time per second per 1°C error)
+#define PWM_WINDOW_MS 1000
+#define I_TERM_MAX 500.0f // Limit the integral term to 50% max power contribution
+
+// --- State Variables ---
+uint32_t pwm_window_start = 0;
+uint32_t pwm_on_time = 0;
+float    integral_sum = 0.0f;
+
+void Process_Heater_PI(void) {
+    uint32_t now = HAL_GetTick();
+
+    // 1. Safety First: Hardware Fault Override
+    if (oc_detected || sc_detected){
+    	Handle_OC_SC_Error();
+    	return;
+    }
+
+    uint32_t time_in_window = now - pwm_window_start;
+
+    // 2. Calculate new PI output once per window (1Hz update rate)
+    if (time_in_window >= PWM_WINDOW_MS || pwm_window_start == 0) {
+        pwm_window_start = now;
+        time_in_window = 0; // Reset for the new cycle
+
+        float error = target_temp - current_temp;
+
+        // Proportional Term
+        float p_term = KP * error;
+
+        // Integral Term with Anti-Windup
+        // Only integrate when we are within +/- 10°C of the target.
+        if (error < 10.0f && error > -10.0f) {
+            integral_sum += (KI * error);
+        } else {
+            // If we make a large setpoint change, clear the integral memory
+            integral_sum = 0.0f;
+        }
+
+        // Constrain the Integral term (Anti-windup limits)
+        if (integral_sum > I_TERM_MAX) integral_sum = I_TERM_MAX;
+        if (integral_sum < 0.0f) integral_sum = 0.0f; // Heater can't actively cool
+
+        // Calculate total required ON time
+        float total_output = p_term + integral_sum;
+
+        // Constrain total output to our 0-1000ms window
+        if (total_output > PWM_WINDOW_MS) {
+            pwm_on_time = PWM_WINDOW_MS;
+        } else if (total_output < 0.0f) {
+            pwm_on_time = 0;
+        } else {
+            pwm_on_time = (uint32_t)total_output;
+        }
+    }
+
+    // 3. Execute the Slow PWM
+    if (time_in_window < pwm_on_time) {
+        HAL_GPIO_WritePin(TEMP_CONTROL_GPIO_Port, TEMP_CONTROL_Pin, GPIO_PIN_SET);
+    } else {
+        HAL_GPIO_WritePin(TEMP_CONTROL_GPIO_Port, TEMP_CONTROL_Pin, GPIO_PIN_RESET);
+    }
+}
+
+
+void Handle_OC_SC_Error(){
+	if ( HAL_GPIO_ReadPin(MDI_OCALERT_GPIO_Port, MDI_OCALERT_Pin) ){
+		pwm_on_time = 0;
+        HAL_GPIO_WritePin(TEMP_CONTROL_GPIO_Port, TEMP_CONTROL_Pin, GPIO_PIN_RESET);
+		LCD_SetCursor(0, 0);
+		LCD_Print("Грешка Липсва   Термодвойка     ");
+
+	}
+	if ( HAL_GPIO_ReadPin(SCALERT_GPIO_Port, SCALERT_Pin) ){
+		pwm_on_time = 0;
+        HAL_GPIO_WritePin(TEMP_CONTROL_GPIO_Port, TEMP_CONTROL_Pin, GPIO_PIN_RESET);
+		LCD_SetCursor(0, 0);
+		LCD_Print("Грешка Късо     Съединение      ");
+	}
+}
+
+
 // Helper to write register
 static HAL_StatusTypeDef WriteReg(MCP96L01_HandleTypeDef *dev, uint8_t reg, uint8_t data) {
     return HAL_I2C_Mem_Write(dev->hi2c, dev->i2c_addr, reg, I2C_MEMADD_SIZE_8BIT, &data, 1, 100);

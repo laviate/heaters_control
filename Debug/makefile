@@ -60,8 +60,8 @@ all: main-build
 main-build: heaters_control.elf secondary-outputs
 
 # Tool invocations
-heaters_control.elf heaters_control.map: $(OBJS) $(USER_OBJS) E:\stmprojects\heaters_control\STM32L010K4TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "heaters_control.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m0plus -T"E:\stmprojects\heaters_control\STM32L010K4TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="heaters_control.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+heaters_control.elf heaters_control.map: $(OBJS) $(USER_OBJS) C:\Users\user\Documents\stmprojects\heaters_control\STM32L010K4TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "heaters_control.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m0plus -T"C:\Users\user\Documents\stmprojects\heaters_control\STM32L010K4TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="heaters_control.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

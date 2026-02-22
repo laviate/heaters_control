@@ -7,105 +7,85 @@
 
 #include "lcd.h"
 #include "lcd_config.h"
-#include <string.h>
 
-// Internal state to track display type
-static uint8_t _is_16x1_split = 0;
-
-// Helper: 8-bit bus write
+// Helper to set all 8 pins
 static void LCD_WriteBus(uint8_t data) {
-    HAL_GPIO_WritePin(LCD_DATA_PORT_0, LCD_DATA_PIN_0, (data & 0x01));
-    HAL_GPIO_WritePin(LCD_DATA_PORT_1, LCD_DATA_PIN_1, (data & 0x02));
-    HAL_GPIO_WritePin(LCD_DATA_PORT_2, LCD_DATA_PIN_2, (data & 0x04));
-    HAL_GPIO_WritePin(LCD_DATA_PORT_3, LCD_DATA_PIN_3, (data & 0x08));
-    HAL_GPIO_WritePin(LCD_DATA_PORT_4, LCD_DATA_PIN_4, (data & 0x10));
-    HAL_GPIO_WritePin(LCD_DATA_PORT_5, LCD_DATA_PIN_5, (data & 0x20));
-    HAL_GPIO_WritePin(LCD_DATA_PORT_6, LCD_DATA_PIN_6, (data & 0x40));
-    HAL_GPIO_WritePin(LCD_DATA_PORT_7, LCD_DATA_PIN_7, (data & 0x80));
+    HAL_GPIO_WritePin(LCD_D0_PORT, LCD_D0_PIN, (data & 0x01));
+    HAL_GPIO_WritePin(LCD_D1_PORT, LCD_D1_PIN, (data & 0x02));
+    HAL_GPIO_WritePin(LCD_D2_PORT, LCD_D2_PIN, (data & 0x04));
+    HAL_GPIO_WritePin(LCD_D3_PORT, LCD_D3_PIN, (data & 0x08));
+    HAL_GPIO_WritePin(LCD_D4_PORT, LCD_D4_PIN, (data & 0x10));
+    HAL_GPIO_WritePin(LCD_D5_PORT, LCD_D5_PIN, (data & 0x20));
+    HAL_GPIO_WritePin(LCD_D6_PORT, LCD_D6_PIN, (data & 0x40));
+    HAL_GPIO_WritePin(LCD_D7_PORТ, LCD_D7_PIN, (data & 0x80));
 }
 
+// The latch signal - CRITICAL
 static void LCD_PulseEnable(void) {
     HAL_GPIO_WritePin(LCD_EN_PORT, LCD_EN_PIN, GPIO_PIN_SET);
-    // Enable pulse width must be > 450ns.
-    // At STM32 speeds, a few NOPs or a tiny loop is enough.
-    for(volatile int i=0; i<50; i++);
-    HAL_GPIO_WritePin(LCD_EN_PORT, LCD_EN_PIN, GPIO_PIN_RESET);
+    for(volatile int i=0; i<100; i++); // Wait > 450ns
+    HAL_GPIO_WritePin(LCD_EN_PORT, LCD_EN_PIN, GPIO_PIN_RESET); // Falling edge latches data
+    for(volatile int i=0; i<100; i++); // Wait for execution
 }
 
 void LCD_SendCommand(uint8_t cmd) {
-    HAL_GPIO_WritePin(LCD_RS_PORT, LCD_RS_PIN, GPIO_PIN_RESET); // RS Low = Command
-    HAL_GPIO_WritePin(LCD_RW_PORT, LCD_RW_PIN, GPIO_PIN_RESET); // RW Low = Write
+    HAL_GPIO_WritePin(LCD_RS_PORT, LCD_RS_PIN, GPIO_PIN_RESET); // RS=0 Command
+    HAL_GPIO_WritePin(LCD_RW_PORT, LCD_RW_PIN, GPIO_PIN_RESET); // RW=0 Write
     LCD_WriteBus(cmd);
     LCD_PulseEnable();
-    HAL_Delay(2); // Commands need time
+    HAL_Delay(2);
 }
 
 void LCD_SendData(uint8_t data) {
-    HAL_GPIO_WritePin(LCD_RS_PORT, LCD_RS_PIN, GPIO_PIN_SET);   // RS High = Data
-    HAL_GPIO_WritePin(LCD_RW_PORT, LCD_RW_PIN, GPIO_PIN_RESET); // RW Low = Write
+    HAL_GPIO_WritePin(LCD_RS_PORT, LCD_RS_PIN, GPIO_PIN_SET);   // RS=1 Data
+    HAL_GPIO_WritePin(LCD_RW_PORT, LCD_RW_PIN, GPIO_PIN_RESET); // RW=0 Write
     LCD_WriteBus(data);
     LCD_PulseEnable();
-    // Data writes are faster, usually 40us, but HAL_Delay(1) is safe
-    for(volatile int i=0; i<500; i++);
+    for(volatile int i=0; i<500; i++); // Data is fast (~37us)
 }
 
-// Initialize with a type parameter
-void LCD_Init(LCD_Type_t type) {
-    // 1. Force RW Low just in case
+void LCD_Init(void) {
+    // Force RW low
     HAL_GPIO_WritePin(LCD_RW_PORT, LCD_RW_PIN, GPIO_PIN_RESET);
-
-    // 2. Initialization Sequence for 8-bit
     HAL_Delay(50);
+
+    // Standard 8-bit initialization sequence
     LCD_SendCommand(0x30);
     HAL_Delay(5);
     LCD_SendCommand(0x30);
     HAL_Delay(1);
     LCD_SendCommand(0x30);
 
-    // 3. Function Set: 8-bit, 2-line, 5x8 dots
-    // Note: Even 16x1 displays usually need "2-line" mode to address the right half
+    // Function Set: 8-bit, 2 Line, 5x8 Font
     LCD_SendCommand(0x38);
 
-    LCD_SendCommand(0x0C); // Display ON, Cursor OFF
-    LCD_SendCommand(0x01); // Clear
-    HAL_Delay(2);
-    LCD_SendCommand(0x06); // Entry mode: Increment
+    // Display ON, Cursor OFF, Blink OFF
+    LCD_SendCommand(0x0C);
 
-    if (type == LCD_TYPE_16x1_SPLIT) {
-        _is_16x1_split = 1;
-    } else {
-        _is_16x1_split = 0;
-    }
+    // Clear Display
+    LCD_SendCommand(0x01);
+    HAL_Delay(2);
+
+    // Entry Mode: Increment cursor automatically
+    LCD_SendCommand(0x06);
 }
 
 void LCD_SetCursor(uint8_t row, uint8_t col) {
-    uint8_t addr = 0;
-
-    if (_is_16x1_split) {
-        // For the 16x1 split, everything is visually on "Row 0",
-        // but electrically chars 8-15 are at address 0x40 (Line 2)
-        if (col < 8) addr = 0x80 + col;
-        else addr = 0x80 + 0x40 + (col - 8);
-    }
-    else {
-        // Standard 16x2 or 8x2
-        if (row == 0) addr = 0x80 + col;
-        else addr = 0x80 + 0x40 + col;
-    }
-    LCD_SendCommand(addr);
+    // 16x2 addressing: Line 1 = 0x80, Line 2 = 0xC0
+    if (row == 0)
+        LCD_SendCommand(0x80 + col);
+    else
+        LCD_SendCommand(0xC0 + col);
 }
 
-// --- Cyrillic Mapping ---
-// Maps a UTF-8 wide character to the Winstar LCD byte
-// This table assumes standard Winstar Cyrillic ROM.
-// If characters look wrong, this table needs adjustment based on the datasheet.
-uint8_t Map_Cyrillic(uint16_t utf8_char) {
-    // Case 1: Homoglyphs (Look like Latin) - Map to standard ASCII
-    // A, B, E, K, M, H, O, P, C, T, Y, X
-    // (This saves defining them in the switch case)
+void LCD_Clear(void) {
+    LCD_SendCommand(0x01);
+    HAL_Delay(2);
+}
 
-    switch (utf8_char) {
-        // Upper Case
+// Simple internal Cyrillic mapper (Winstar Standard)
+static uint8_t Map_Cyrillic(uint16_t wide_char) {
+    switch (wide_char) {
         case 0xD091: return 0xA0; // Б
         case 0xD093: return 0xA1; // Г
         case 0xD094: return 0xE0; // Д
@@ -122,57 +102,83 @@ uint8_t Map_Cyrillic(uint16_t utf8_char) {
         case 0xD0A9: return 0xE2; // Щ
         case 0xD0AA: return 0xAD; // Ъ
         case 0xD0AB: return 0xAE; // Ы
-        case 0xD0AC: return 0x62; // ь (soft sign often mapped to 'b' or specific code)
+        case 0xD0AC: return 0x62; // ь
         case 0xD0AD: return 0xB0; // Э
         case 0xD0AE: return 0xB1; // Ю
         case 0xD0AF: return 0xB2; // Я
-
-        // Lower Case (Map to Upper Case or closest available)
-        // Many 1602 LCDs only have Upper Case Cyrillic in ROM
-        case 0xD0B1: return 0xA0; // б -> Б
-        case 0xD0B4: return 0xE0; // д -> Д
-        // ... add others as needed
-
-        default: return 0x2A; // Return '*' for unknown
+        default: return 0x2A;     // *
     }
 }
 
 void LCD_Print(const char *str) {
     while (*str) {
         uint8_t c = *str;
-
-        // Check for UTF-8 Cyrillic leader byte (0xD0 or 0xD1)
+        // Detect UTF-8 Cyrillic (starts with 0xD0 or 0xD1)
         if (c == 0xD0 || c == 0xD1) {
             uint8_t next = *(str + 1);
             if (next) {
                 uint16_t wide = (c << 8) | next;
 
-                // Check if it's a homoglyph (letters that look identical to Latin)
-                // A (0x90), E (0x95), etc.
-                // Simple optimization: If your ROM has full cyrillic, use Map_Cyrillic.
-                // If standard Winstar, use Latin for A, E, T, O, etc.
-                if (wide == 0xD090) LCD_SendData('A'); // А
-                else if (wide == 0xD092) LCD_SendData('B'); // В
-                else if (wide == 0xD095) LCD_SendData('E'); // Е
-                else if (wide == 0xD09A) LCD_SendData('K'); // К
-                else if (wide == 0xD09C) LCD_SendData('M'); // М
-                else if (wide == 0xD09D) LCD_SendData('H'); // Н
-                else if (wide == 0xD09E) LCD_SendData('O'); // О
-                else if (wide == 0xD0A0) LCD_SendData('P'); // Р
-                else if (wide == 0xD0A1) LCD_SendData('C'); // С
-                else if (wide == 0xD0A2) LCD_SendData('T'); // Т
-                else if (wide == 0xD0A3) LCD_SendData('y'); // У (looks like y)
-                else if (wide == 0xD0A5) LCD_SendData('X'); // Х
+                // Homoglyph fix (Map Cyrillic A -> Latin A, etc.)
+                if (wide == 0xD090) LCD_SendData('A');
+                else if (wide == 0xD092) LCD_SendData('B');
+                else if (wide == 0xD095) LCD_SendData('E');
+                else if (wide == 0xD09A) LCD_SendData('K');
+                else if (wide == 0xD09C) LCD_SendData('M');
+                else if (wide == 0xD09D) LCD_SendData('H');
+                else if (wide == 0xD09E) LCD_SendData('O');
+                else if (wide == 0xD0A0) LCD_SendData('P');
+                else if (wide == 0xD0A1) LCD_SendData('C');
+                else if (wide == 0xD0A2) LCD_SendData('T');
+                else if (wide == 0xD0A3) LCD_SendData('y');
+                else if (wide == 0xD0A5) LCD_SendData('X');
                 else LCD_SendData(Map_Cyrillic(wide));
 
-                str += 2; // Skip both bytes
-            } else {
-                str++;
-            }
+                str += 2;
+            } else str++;
         } else {
-            // Standard ASCII
             LCD_SendData(c);
             str++;
         }
     }
+}
+
+void LCD_PrintInt(int32_t number) {
+    char str[12]; // Local stack buffer, only exists during this function call
+    int i = 0;
+
+    if (number == 0) {
+        LCD_SendData('0');
+        return;
+    }
+
+    if (number < 0) {
+        LCD_SendData('-');
+        number = -number;
+    }
+
+    // Extract digits in reverse order
+    while (number > 0) {
+        str[i++] = (number % 10) + '0'; // Convert digit to ASCII
+        number /= 10;
+    }
+
+    // Send to LCD in correct order
+    while (--i >= 0) {
+        LCD_SendData(str[i]);
+    }
+}
+
+void LCD_PrintLine(uint8_t row, const char *str){
+	LCD_SetCursor(row, 0);
+	uint8_t count = 0;
+
+	while (*str && count < 16){
+		LCD_SendData(*str++);
+		count++;
+	}
+	while (count < 16){
+		LCD_SendData(' ');
+		count++;
+	}
 }
