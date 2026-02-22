@@ -1,0 +1,9 @@
+*.list
+*.map
+*.log
+*.d
+*.o
+*.so
+*.a
+*.su
+*.cyclo

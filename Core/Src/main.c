@@ -33,6 +33,14 @@ volatile uint8_t sc_detected = 0;
 signed short target_temp = 308; //Default value before reading from Flash
 uint32_t last_temp_read = 0;
 signed short current_temp = 0;
+
+const char STR_SET_TEMP[] = "\xA4" "a" "\xE3" ". Te" "\xBA\xBC" ": "; // "Зад. Темп: " (Set temp: )
+const char STR_CUR_TEMP[] = "\xA5\xB5\xBA" ". Te" "\xBA\xBC" ": "; // "Изм. Темп: " (Curr temp: )
+const char STR_ERR_INIT_1[] = "\xA1" "pe" "\xC0\xB8" "a:         "; // Line 1: "Грешка:         " (Error: ) - 8 chars
+const char STR_ERR_INIT_2[] = "\xB6\xBB\xB6\xE5\xB6" "a" "\xBB\xB6\xB5" " ce" "\xBB\xB5" "op"; // Line 2: "инициализ сензор" (init sensor) - 16 chars
+
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -82,22 +90,16 @@ int main(void)
 
   LCD_Init();
 
-  // Printing Cyrillic "Привет" (Hi)
-  // The library detects the UTF-8 bytes and maps them to the LCD
-  //  LCD_Print("Привет");
+  if( !Read_Int16_From_EEPROM(&target_temp) ){
+	  target_temp = 308;
+	  Save_Int16_To_EEPROM(target_temp);
+  }
 
-  /* Read from flash what the set temperatures is */
-
-  LCD_Print("Зад. Темп: ");
-  LCD_PrintInt(target_temp);
-  LCD_PrintLine(0, "C");
-  LCD_SetCursor(1, 0);
-  LCD_Print("Изм. Темп: ");
-
-
-  if (MCP96L01_Init(&thermocouple, &hi2c1, MCP96L01_I2C_ADDR, TC_TYPE_K) != HAL_OK) {
-//         Initialization Error Handling
-    }
+  if (MCP96L01_Init(&thermocouple, &hi2c1, MCP96L01_I2C_ADDR) != HAL_OK) {
+	  LCD_SetCursor(0, 0);
+	  LCD_PrintRaw(STR_ERR_INIT_1);
+	  LCD_PrintRaw(STR_ERR_INIT_2);
+  }
 
   // Alert at ALERT1 pin if temperature is above 450C
   MCP96L01_ConfigureAlertLimit(&thermocouple, ALERT_1, 450.0f, 1);
@@ -109,7 +111,7 @@ int main(void)
   while (1)
   {
 	  // 1. Handle UI & Button States instantly
-//	  Process_UI();
+	  Process_UI();
 
 	  // 2. Read temperature at a sensible rate (e.g., 4 times a second)
 	  if (HAL_GetTick() - last_temp_read >= 250) {
@@ -118,7 +120,7 @@ int main(void)
 	  }
 
 	  // 3. Update the Heater logic instantly
-//	  Process_Heater_PI();
+	  Process_Heater_PI();
 
     /* USER CODE END WHILE */
 

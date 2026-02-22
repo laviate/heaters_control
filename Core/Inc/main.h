@@ -31,7 +31,6 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "lcd_config.h"
 #include "lcd.h"
 #include "mcp96l01.h"
 #include "ui.h"

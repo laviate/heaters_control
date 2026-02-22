@@ -39,25 +39,10 @@ extern signed short current_temp;
 #define REG_ALERT4_LIMIT           0x13
 #define REG_DEVICE_ID              0x20
 
-// --- Thermocouple Types (for Register 0x05) ---
-typedef enum {
-    TC_TYPE_K = 0x00,
-    TC_TYPE_J = 0x01,
-    TC_TYPE_T = 0x02,
-    TC_TYPE_N = 0x03,
-    TC_TYPE_S = 0x04,
-    TC_TYPE_E = 0x05,
-    TC_TYPE_B = 0x06,
-    TC_TYPE_R = 0x07
-} MCP96_TCType_t;
-
-// --- Filter Coefficients ---
-typedef enum {
-    FILTER_OFF = 0,
-    FILTER_MIN = 1,
-    FILTER_MID = 4,
-    FILTER_MAX = 7
-} MCP96_FilterCoeff_t;
+typedef struct {
+    I2C_HandleTypeDef *hi2c;
+    uint8_t i2c_addr;
+} MCP96L01_HandleTypeDef;
 
 // --- Alert Pad Selection ---
 typedef enum {
@@ -67,24 +52,15 @@ typedef enum {
     ALERT_4 = 4
 } MCP96_AlertPad_t;
 
-// --- Main Struct ---
-typedef struct {
-    I2C_HandleTypeDef *hi2c;
-    uint8_t i2c_addr;
-    MCP96_TCType_t tc_type;
-} MCP96L01_HandleTypeDef;
 
-// --- Function Prototypes ---
+HAL_StatusTypeDef MCP96L01_Init(MCP96L01_HandleTypeDef *dev, I2C_HandleTypeDef *hi2c, uint8_t addr);
+int16_t MCP96L01_ReadHotJunction(MCP96L01_HandleTypeDef *dev);
+int16_t MCP96L01_ReadColdJunction(MCP96L01_HandleTypeDef *dev);
+uint8_t MCP96L01_GetStatus(MCP96L01_HandleTypeDef *dev);
+HAL_StatusTypeDef MCP96L01_ConfigureAlertLimit(MCP96L01_HandleTypeDef *dev, MCP96_AlertPad_t alertNum, float tempLimit, uint8_t activeHigh);
 void Handle_OC_SC_Error();
 void Process_Heater_PI(void);
-HAL_StatusTypeDef MCP96L01_Init(MCP96L01_HandleTypeDef *dev, I2C_HandleTypeDef *hi2c, uint8_t addr, MCP96_TCType_t type);
-HAL_StatusTypeDef MCP96L01_SetThermocoupleType(MCP96L01_HandleTypeDef *dev, MCP96_TCType_t type);
-float MCP96L01_ReadHotJunction(MCP96L01_HandleTypeDef *dev);
-float MCP96L01_ReadColdJunction(MCP96L01_HandleTypeDef *dev);
-uint8_t MCP96L01_GetStatus(MCP96L01_HandleTypeDef *dev);
 
-// Configuration for your Alert Pins
-HAL_StatusTypeDef MCP96L01_ConfigureAlertLimit(MCP96L01_HandleTypeDef *dev, MCP96_AlertPad_t alertNum, float tempLimit, uint8_t activeHigh);
 
 
 #endif /* INC_MCP96L01_H_ */

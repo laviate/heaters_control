@@ -4,7 +4,7 @@
 #define UNLOCK_HOLD_MS       3000   // 3 seconds to unlock
 #define AUTO_LOCK_MS         60000  // 1 minute of inactivity to lock
 #define SCROLL_DELAY_MS      250    // Speed of temperature change when holding (250ms = 4 ticks per second)
-#define TEMP_INCREMENT       2.0f   // Change by 2 degrees
+#define TEMP_INCREMENT       2	   // Change by 2 degrees
 
 // --- UI State Variables ---
 uint8_t  ui_unlocked = 0;
@@ -58,8 +58,8 @@ void Process_UI(void) {
             if (btn_dn) target_temp -= TEMP_INCREMENT;
 
             // Optional: Clamp target_temp to a max/min safe value
-            if (target_temp > 400.0f) target_temp = 400.0f;
-            if (target_temp < 0.0f) target_temp = 0.0f;
+            if (target_temp > 420) target_temp = 420;
+            if (target_temp < 150) target_temp = 0.0;
 
             last_scroll_time = now;
         }
@@ -69,4 +69,58 @@ void Process_UI(void) {
         // rather than waiting 250ms for the first click.
         last_scroll_time = now - SCROLL_DELAY_MS;
     }
+}
+
+
+/* STM32L011K4 has 512 Bytes of Data EEPROM.
+ * Base Address: 0x08080000
+ * End Address:  0x080801FF
+ * Last 32-bit Word Address: 0x080801FC
+ */
+#define EEPROM_LAST_WORD_ADDR 0x080801FC
+
+/* Magic pattern to verify if data is valid (0xCAFE) */
+#define EEPROM_MAGIC_PATTERN  0xCAFE0000
+#define EEPROM_MAGIC_MASK     0xFFFF0000
+
+/**
+ * @brief Saves an int16_t to the last word of the Data EEPROM.
+ * @param data The value to save (expected range: 150 to 450).
+ */
+void Save_Int16_To_EEPROM(int16_t data) {
+    /* 1. Combine the magic pattern and the 16-bit data into a 32-bit word */
+    uint32_t word_to_write = EEPROM_MAGIC_PATTERN | (uint16_t)data;
+
+    /* 2. Unlock the Data EEPROM and FLASH control registers */
+    HAL_FLASHEx_DATAEEPROM_Unlock();
+
+    /* 3. Program the 32-bit word.
+     * The HAL and hardware handle the erase-before-write process automatically!
+     */
+    HAL_FLASHEx_DATAEEPROM_Program(FLASH_TYPEPROGRAMDATA_WORD, EEPROM_LAST_WORD_ADDR, word_to_write);
+
+    /* 4. Lock the Data EEPROM to protect against accidental writes */
+    HAL_FLASHEx_DATAEEPROM_Lock();
+}
+
+/**
+ * @brief Reads an int16_t from the last word of the Data EEPROM.
+ * @param data Pointer to store the read value.
+ * @return true if valid data was found, false if unwritten/corrupted.
+ */
+uint8_t Read_Int16_From_EEPROM(int16_t *data) {
+    /* 1. Read the 32-bit word directly from the memory address */
+    uint32_t eeprom_word = *(volatile uint32_t*)EEPROM_LAST_WORD_ADDR;
+
+    /* 2. Check if our magic pattern is intact in the upper 16 bits */
+    if ((eeprom_word & EEPROM_MAGIC_MASK) == EEPROM_MAGIC_PATTERN) {
+        /* Pattern found: extract the lower 16 bits and cast back to int16_t */
+        if (data != NULL) {
+            *data = (int16_t)(eeprom_word & 0x0000FFFF);
+        }
+        return 1;
+    }
+
+    /* Pattern not found: EEPROM is uninitialized or corrupted */
+    return 0;
 }

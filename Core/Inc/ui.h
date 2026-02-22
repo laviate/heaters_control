@@ -16,7 +16,8 @@ extern signed short target_temp;
 
 
 void Process_UI(void);
-
+void Save_Int16_To_EEPROM(int16_t data);
+uint8_t Read_Int16_From_EEPROM(int16_t *data);
 
 #endif /* INC_UI_H_ */
 
